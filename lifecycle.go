@@ -25,90 +25,31 @@ import (
 	"testing"
 )
 
-type DescIn[T any] struct {
-	// TC and its internals are intended to be immutable during Describe phase.
-	TC T
-	// Given is intended to be immutable during Describe phase.
-	Given string
-}
-
-type DescOut struct {
-	// When should be set to non-empty by the end of the Describe phase.
-	When *string
-	// Then should be set to non-empty by the end of the Describe phase.
-	Then *string
-}
-
-type AfterArrange[T any] struct {
-	// TC can be altered by AfterArrange func if desired.
-	TC         *T
-	ArrangeRan bool
-}
-
-type AfterAct[T any, R any] struct {
-	// TC can be altered by AfterAct func if desired.
-	TC *T
-	// Result can be altered by AfterAct func if desired.
-	Result *R
-}
-
-type AfterAssert[T any, R any] struct {
-	// TC can be altered by AfterAssert func if desired.
-	TC *T
-	// Result can be altered by AfterAssert func if desired.
-	Result *R
-}
-
-type Hooks[T any, R any] struct {
-	AfterArrange func(*testing.T, AfterArrange[T])
-	AfterAct     func(*testing.T, AfterAct[T, R])
-	AfterAssert  func(*testing.T, AfterAssert[T, R])
-}
-
-type Given[T any] struct {
-	// TC can be altered by Given func if desired.
-	TC *T
-	// Context must be non-empty by the end of the Given phase if the Given func does run.
-	Context *string
-}
-
-type Arrange[T any, R any] struct {
-	// TC can be altered by Arrange func if desired.
-	TC *T
-	// Hooks can be altered by Arrange func if desired.
-	Hooks *Hooks[T, R]
-	// When can be altered by Arrange func if desired.
-	// It must be non-empty by the end of the Describe phase which comes after Arrange.
-	When *string
-	// Then can be altered by Arrange func if desired.
-	// It must be non-empty by the end of the Describe phase which comes after Arrange.
-	Then *string
-}
-
-type ActIn[T any] struct {
-	// TC and its internals are intended to be immutable during Act phase.
-	TC T
-}
-
-type ActOut[R any] struct {
-	// Res can be altered by Act func if desired.
-	Res *R
-}
-
-type Assert[T any, R any] struct {
-	// TC and its internals are intended to be immutable during Assert phase.
-	TC T
-	// Res and its internals are intended to be immutable during Assert phase.
-	Res R
-}
-
-type TestVariation[T any] struct {
-	TC T
-	// Kind must be non-empty when returned by a test case implementing `Variants(*testing.T) iter.Seq[TestVariation[T]]`
-	Kind string
-	Skip bool
-}
-
+// BDDLifecycle describes an execution process with a specific order to it.
+//
+// New and NewI return test functions that implement this process.
+//
+// The order:
+//
+// - Arrange
+//
+// - AfterArrange (hook)
+//
+// - Given
+//
+// - AfterGiven (hook)
+//
+// - Describe
+//
+// - Act
+//
+// - AfterAct (hook)
+//
+// - Assert
+//
+// - AfterAssert (hook)
+//
+// - Variants
 type BDDLifecycle[T any, R any] struct {
 	Given, When, Then string
 	hooks             Hooks[T, R]
@@ -120,42 +61,152 @@ type BDDLifecycle[T any, R any] struct {
 
 	// Variants allows for the construction of more test cases from a basis test case.
 	// The T passed in is a copy of BDDLifecycle.TC taken before the basis test runs.
-	// The resulting TestVariation.TC values will each be cloned with CloneTC (if non-nil)
+	// The resulting TestVariant.TC values will each be cloned with CloneTC (if non-nil)
 	// before being executed, so they can mutate TC without affecting each other.
-	Variants func(*testing.T, T) iter.Seq[TestVariation[T]]
+	Variants func(*testing.T, T) iter.Seq[TestVariant[T]]
 
-	// GivenContext sets the given context string for a particular initial test configuration (if applicable)
-	//
-	// The Context string passed to this handler must be non-empty if Arrange func is non-nil
-	GivenContext func(*testing.T, Given[T])
-
-	// Arrange sets hooks, test case defaults, and initial descriptions
-	//
-	// Arrange can only be specified when a given context is set (either by GivenContext or by directly setting Given).
-	Arrange func(*testing.T, Arrange[T, R])
+	// Arrange sets hooks, test case defaults, and initial descriptions then returns a
+	// given string and a function that sets up any context the test case requires. It will
+	// be called shortly after being returned to setup the given context for the test case.
+	Arrange func(*testing.T, Arrange[T, R]) (string, func(*testing.T))
 
 	// Describe makes sure given (if applicable), when, and then descriptions are set
-	Describe func(*testing.T, DescIn[T], DescOut)
+	Describe func(*testing.T, Describe[T]) DescribeResponse
 
 	// Act exercises the component under test and stores results
-	Act func(*testing.T, ActIn[T], ActOut[R])
+	Act func(*testing.T, T) R
 
 	// Assert: validate results + side-effects
 	Assert func(*testing.T, Assert[T, R])
+}
+
+type Hooks[T any, R any] struct {
+	AfterArrange func(*testing.T, AfterArrange[T])
+	AfterGiven   func(*testing.T, AfterGiven[T])
+	AfterAct     func(*testing.T, AfterAct[T, R])
+	AfterAssert  func(*testing.T, AfterAssert[T, R])
+}
+
+// Arrange contains the mutable configuration of the rest of the test execution plan.
+//
+// Act, Assert, When, Then must be set to non-nil/non-empty values by the time Arrange returns.
+type Arrange[T any, R any] struct {
+	// TC can be altered by Arrange func if desired.
+	TC *T
+	// Hooks can be altered by Arrange func if desired.
+	Hooks *Hooks[T, R]
+	// Act can be altered by the Arrange func if desired.
+	// This is a pointer to the lifecycle's Act function so Arrange can replace it.
+	Act *(func(*testing.T, T) R)
+	// Assert can be altered by the Arrange func if desired.
+	// This is a pointer to the lifecycle's Assert function so Arrange can replace it.
+	Assert *(func(*testing.T, Assert[T, R]))
+	// Given is provided for seeding the first return argument context if desired.
+	Given string
+	// When can be altered by Arrange func if desired.
+	// It must be non-empty by the end of the Describe phase which comes after Arrange.
+	When *string
+	// Then can be altered by Arrange func if desired.
+	// It must be non-empty by the end of the Describe phase which comes after Arrange.
+	Then *string
+}
+
+// AfterArrange describes the configuration of a test case arrangement for
+// post-arrange hook use.
+type AfterArrange[T any] struct {
+	// TC can be altered by AfterArrange func if desired.
+	TC         *T
+	ArrangeRan bool
+}
+
+// AfterGiven describes the configuration of a test case arrangement for
+// post-given hook use.
+type AfterGiven[T any] struct {
+	// TC can be altered by AfterGiven func if desired.
+	TC *T
+	// Given can be altered by AfterGiven func if desired.
+	Given *string
+	// When can be altered by AfterGiven func if desired.
+	When *string
+	// Then can be altered by AfterGiven func if desired.
+	Then     *string
+	GivenRan bool
+}
+
+// Describe contains the configuration of a test case and its Given, When, and then context
+// strings. This configuration is used to finalize the values of When and Then in a Describe
+// call.
+type Describe[T any] struct {
+	// TC and its internals are intended to be immutable during Describe phase.
+	TC T
+	// Given is intended to be immutable during Describe phase.
+	Given string
+	// When is the initial value of when which can be referenced and loaded into the returned DescribeResponse struct as desired.
+	When string
+	// Then is the initial value of then which can be referenced and loaded into the returned DescribeResponse struct as desired.
+	Then string
+}
+
+// DescribeResponse contains the definition of when + then for a BDD test case
+// and is the result of a Describe call.
+type DescribeResponse struct {
+	// When should be set to non-empty by the end of the Describe phase.
+	When string
+	// Then should be set to non-empty by the end of the Describe phase.
+	Then string
+}
+
+// AfterAct describes the configuration of a test case and its result for
+// post-action hook use.
+type AfterAct[T any, R any] struct {
+	// TC can be altered by AfterAct func if desired.
+	TC *T
+	// Result can be altered by AfterAct func if desired.
+	Result *R
+}
+
+// Assert describes the configuration of a test case and its result for analysis.
+type Assert[T any, R any] struct {
+	// TC and its internals are intended to be immutable during Assert phase.
+	TC T
+	// R and its internals are intended to be immutable during Assert phase.
+	Result R
+}
+
+// AfterAssert describes the configuration of a test case and its result for
+// post-assert hook use.
+type AfterAssert[T any, R any] struct {
+	// TC can be altered by AfterAssert func if desired.
+	TC *T
+	// Result can be altered by AfterAssert func if desired.
+	Result *R
+}
+
+// TestVariant describes a new test case created from some basis case.
+type TestVariant[T any] struct {
+	TC T
+	// Kind must be non-empty when returned by a Variants function
+	Kind        string
+	SkipTest    bool
+	SkipCloneTC bool
 }
 
 func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 	t.Helper()
 
 	f := func(t *testing.T, tc T, prefix string) func(*testing.T) {
+		t.Helper()
+
 		b := b
 
-		var result R
 		test := func(t *testing.T) {
 			t.Helper()
 
 			if f := b.Describe; f != nil {
-				f(t, DescIn[T]{tc, b.Given}, DescOut{&b.When, &b.Then})
+				r := f(t, Describe[T]{tc, b.Given, b.When, b.Then})
+
+				b.When = r.When
+				b.Then = r.Then
 			}
 
 			if b.When == "" {
@@ -178,7 +229,7 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 			t.Run("when "+b.When, func(t *testing.T) {
 				t.Helper()
 
-				b.Act(t, ActIn[T]{tc}, ActOut[R]{&result})
+				result := b.Act(t, tc)
 				if f := b.hooks.AfterAct; f != nil {
 					f(t, AfterAct[T, R]{&tc, &result})
 				}
@@ -194,32 +245,43 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 			})
 		}
 
-		if f := b.GivenContext; f != nil {
-			f(t, Given[T]{&tc, &b.Given})
-		}
-
-		if b.Arrange != nil || b.GivenContext != nil || b.Given != "" {
+		if b.Arrange != nil || b.Given != "" {
 			next := test
 
-			var arrangeRan bool
 			test = func(t *testing.T) {
 				t.Helper()
 
+				var arrangeRan bool
+				var given func(*testing.T)
+				if f := b.Arrange; f != nil {
+					arrangeRan = true
+					b.Given, given = f(t, Arrange[T, R]{&tc, &b.hooks, &b.Act, &b.Assert, b.Given, &b.When, &b.Then})
+					if given == nil {
+						t.Fatal("test setup not run: Arrange returned a nil given function")
+						return
+					}
+				}
+
+				if f := b.hooks.AfterArrange; f != nil {
+					f(t, AfterArrange[T]{&tc, arrangeRan})
+				}
+
 				if b.Given == "" {
-					t.Fatal("test setup not run: Given function of BDD test is not defined (while Arrange is) or failed to set context")
+					t.Fatal("test setup not run: Arrange function returned an empty Given string")
 					return
 				}
 
 				t.Run("given "+b.Given, func(t *testing.T) {
 					t.Helper()
 
-					if f := b.Arrange; f != nil {
-						arrangeRan = true
-						f(t, Arrange[T, R]{&tc, &b.hooks, &b.When, &b.Then})
+					var givenRan bool
+					if given != nil {
+						givenRan = true
+						given(t)
 					}
 
-					if f := b.hooks.AfterArrange; f != nil {
-						f(t, AfterArrange[T]{&tc, arrangeRan})
+					if f := b.hooks.AfterGiven; f != nil {
+						f(t, AfterGiven[T]{&tc, &b.Given, &b.When, &b.Then, givenRan})
 					}
 
 					next(t)
@@ -250,6 +312,8 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 	}
 
 	return func(t *testing.T) {
+		t.Helper()
+
 		// `tc := b.TC` is required so the basis test works on a copy of the lifecycle's TC value.
 		// The inner `tc := tc` plus optional CloneTC call let the basis test freely mutate its TC
 		// without affecting:
@@ -279,17 +343,20 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 		for v := range variants(t, tc) {
 			i++
 
-			if v.Skip {
+			if v.SkipTest {
 				continue
 			}
 
 			if v.Kind == "" {
-				t.Fatalf("BDD configuration error: test case variant at index %d has no Kind details", i)
+				t.Fatalf("BDD configuration error: test case variant at index %d has no Kind detail", i)
+				continue
 			}
 
 			tc := v.TC
-			if f := b.CloneTC; f != nil {
-				tc = f(tc)
+			if !v.SkipCloneTC {
+				if f := b.CloneTC; f != nil {
+					tc = f(tc)
+				}
 			}
 
 			f(t, tc, v.Kind)(t)
