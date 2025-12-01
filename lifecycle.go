@@ -187,7 +187,7 @@ type TestVariant[T any] struct {
 	TC T
 	// Kind must be non-empty when returned by a Variants function
 	Kind        string
-	SkipTest    bool
+	SkipTC      bool
 	SkipCloneTC bool
 }
 
@@ -343,7 +343,7 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 		for v := range variants(t, tc) {
 			i++
 
-			if v.SkipTest {
+			if v.SkipTC {
 				continue
 			}
 
