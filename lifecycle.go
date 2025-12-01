@@ -191,10 +191,20 @@ type TestVariant[T any] struct {
 	SkipCloneTC bool
 }
 
-func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
+// testingT is a simplified version of the functions the *testing.T type implements.
+//
+// In normal use the caller should always be comfortable using a standard non-nil
+// *testing.T value which will always satisfy the interface testingT.
+type testingT interface {
+	Helper()
+}
+
+// NewI takes a *testing.T and an index in a table driven test to construct
+// sub-tests for a given BDDLifecycle configuration.
+func (b BDDLifecycle[T, R]) NewI(t testingT, tci int) func(*testing.T) {
 	t.Helper()
 
-	f := func(t *testing.T, tc T, prefix string) func(*testing.T) {
+	f := func(t testingT, tc T, prefix string) func(*testing.T) {
 		t.Helper()
 
 		b := b
@@ -236,7 +246,7 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 				t.Error("Assert function of BDD test is not defined")
 			}
 			if b.When == "" || b.Then == "" || b.Act == nil || b.Assert == nil {
-				t.Fatal("when+then not run: BDD test not configured properly")
+				t.Fatalf(`when+then not run: BDD test not configured properly (prefix = "%s")`, prefix)
 				return
 			}
 
@@ -276,17 +286,16 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 					arrangeRan = true
 					b.Given, given = f(t, Arrange[T, R]{&tc, &b.hooks, &b.Act, &b.Assert, b.Given, &b.When, &b.Then})
 					if given == nil {
-						t.Fatal("test setup not run: Arrange returned a nil given function")
+						if f := b.hooks.AfterArrange; f != nil {
+							f(t, AfterArrange[T]{&tc, arrangeRan})
+						}
+						t.Fatalf(`test setup not run: Arrange returned a nil given function (prefix = "%s")`, prefix)
 						return
 					}
 				}
 
-				if f := b.hooks.AfterArrange; f != nil {
-					f(t, AfterArrange[T]{&tc, arrangeRan})
-				}
-
 				if b.Given == "" {
-					t.Fatal("test setup not run: Arrange function returned an empty Given string")
+					t.Fatalf(`test setup not run: Arrange function returned an empty Given string (prefix = "%s")`, prefix)
 					return
 				}
 
@@ -364,7 +373,8 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 	}
 }
 
-func (b BDDLifecycle[T, R]) New(t *testing.T) func(*testing.T) {
+// New takes a *testing.T to construct sub-tests for a given BDDLifecycle configuration.
+func (b BDDLifecycle[T, R]) New(t testingT) func(*testing.T) {
 	t.Helper()
 
 	return b.NewI(t, -1)
