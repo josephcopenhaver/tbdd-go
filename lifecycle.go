@@ -199,6 +199,20 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 
 		b := b
 
+		if tci >= 0 {
+			s := strconv.Itoa(tci)
+			if prefix == "" {
+				prefix = s
+			} else {
+				prefix = s + "/" + prefix
+			}
+		}
+		if prefix != "" {
+			prefix += "/"
+		}
+
+		hasGivenPhase := (b.Arrange != nil || b.Given != "")
+
 		test := func(t *testing.T) {
 			t.Helper()
 
@@ -226,7 +240,12 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 				return
 			}
 
-			t.Run("when "+b.When, func(t *testing.T) {
+			whenStr := "when " + b.When
+			if prefix != "" && !hasGivenPhase {
+				whenStr = prefix + whenStr
+			}
+
+			t.Run(whenStr, func(t *testing.T) {
 				t.Helper()
 
 				result := b.Act(t, tc)
@@ -245,7 +264,7 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 			})
 		}
 
-		if b.Arrange != nil || b.Given != "" {
+		if hasGivenPhase {
 			next := test
 
 			test = func(t *testing.T) {
@@ -271,7 +290,7 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 					return
 				}
 
-				t.Run("given "+b.Given, func(t *testing.T) {
+				t.Run(prefix+"given "+b.Given, func(t *testing.T) {
 					t.Helper()
 
 					var givenRan bool
@@ -286,25 +305,6 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 
 					next(t)
 				})
-			}
-		}
-
-		if tci >= 0 || prefix != "" {
-			next := test
-
-			if tci >= 0 {
-				s := strconv.Itoa(tci)
-				if prefix == "" {
-					prefix = s
-				} else {
-					prefix = s + "/" + prefix
-				}
-			}
-
-			test = func(t *testing.T) {
-				t.Helper()
-
-				t.Run(prefix, next)
 			}
 		}
 
