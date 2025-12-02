@@ -50,7 +50,7 @@ import (
 // - AfterAssert (hook)
 //
 // - Variants
-type BDDLifecycle[T any, R any] struct {
+type Lifecycle[T any, R any] struct {
 	Given, When, Then string
 	hooks             Hooks[T, R]
 	TC                T
@@ -60,7 +60,7 @@ type BDDLifecycle[T any, R any] struct {
 	CloneTC func(T) T
 
 	// Variants allows for the construction of more test cases from a basis test case.
-	// The T passed in is a copy of BDDLifecycle.TC taken before the basis test runs.
+	// The T passed in is a copy of Lifecycle.TC taken before the basis test runs.
 	// The resulting TestVariant.TC values will each be cloned with CloneTC (if non-nil)
 	// before being executed, so they can mutate TC without affecting each other.
 	Variants func(*testing.T, T) iter.Seq[TestVariant[T]]
@@ -82,6 +82,9 @@ type BDDLifecycle[T any, R any] struct {
 
 	// Assert: validate results + side-effects
 	Assert func(*testing.T, Assert[T, R])
+
+	getT    func(testingT) *testing.T
+	runHook func(string)
 }
 
 type Hooks[T any, R any] struct {
@@ -101,7 +104,8 @@ type Arrange[T any, R any] struct {
 	// TC can be altered by Arrange func if desired.
 	TC *T
 	// Hooks can be altered by Arrange func if desired.
-	Hooks *Hooks[T, R]
+	Hooks    *Hooks[T, R]
+	Describe *func(*testing.T, Describe[T]) DescribeResponse
 	// Act can be altered by the Arrange func if desired.
 	// This is a pointer to the lifecycle's Act function so Arrange can replace it.
 	Act *(func(*testing.T, T) R)
@@ -209,14 +213,36 @@ type TestVariant[T any] struct {
 // *testing.T value which will always satisfy the interface testingT.
 type testingT interface {
 	Helper()
+	Run(string, func(*testing.T)) bool
+	Fatalf(format string, args ...any)
+	Error(args ...any)
+}
+
+func (b Lifecycle[T, R]) afterArrange(t *testing.T, tc *T, arrangeRan, nilGivenFunc, emptyGivenString bool) {
+	if f := b.hooks.AfterArrange; f != nil {
+		f(t, AfterArrange[T]{tc, arrangeRan, nilGivenFunc, emptyGivenString})
+	}
 }
 
 // NewI takes a *testing.T, which satisfies testingT, and an index in a table driven test to construct
-// sub-tests for a given BDDLifecycle configuration.
-func (b BDDLifecycle[T, R]) NewI(t testingT, tci int) func(*testing.T) {
+// sub-tests for a given Lifecycle configuration.
+func (b Lifecycle[T, R]) NewI(t testingT, tci int) func(testingT) {
 	t.Helper()
 
-	f := func(t testingT, tc T, prefix string) func(*testing.T) {
+	// getT converts a testingT to *testing.T
+	//
+	// under a self-test context it will return nil
+	getT := b.getT
+	if getT == nil {
+		getT = defaultGetT
+	}
+
+	// runHook is an internal function reference supporting self-test contexts
+	//
+	// It is used to track run calls.
+	runHook := b.runHook
+
+	f := func(t testingT, tc T, prefix string) func(testingT) {
 		t.Helper()
 
 		b := b
@@ -235,11 +261,11 @@ func (b BDDLifecycle[T, R]) NewI(t testingT, tci int) func(*testing.T) {
 
 		hasGivenPhase := (b.Arrange != nil || b.Given != "")
 
-		test := func(t *testing.T) {
+		test := func(t testingT) {
 			t.Helper()
 
 			if f := b.Describe; f != nil {
-				r := f(t, Describe[T]{tc, b.Given, b.When, b.Then})
+				r := f(getT(t), Describe[T]{tc, b.Given, b.When, b.Then})
 
 				b.When = r.When
 				b.Then = r.Then
@@ -268,15 +294,16 @@ func (b BDDLifecycle[T, R]) NewI(t testingT, tci int) func(*testing.T) {
 			}
 
 			t.Run(whenStr, func(t *testing.T) {
-				t.Helper()
+				nt := nillableT{t, runHook}
+				nt.Helper()
 
 				result := b.Act(t, tc)
 				if f := b.hooks.AfterAct; f != nil {
 					f(t, AfterAct[T, R]{&tc, &result})
 				}
 
-				t.Run("then "+b.Then, func(t *testing.T) {
-					t.Helper()
+				nt.Run("then "+b.Then, func(t *testing.T) {
+					nillableT{t, nil}.Helper()
 
 					b.Assert(t, Assert[T, R]{tc, result})
 					if f := b.hooks.AfterAssert; f != nil {
@@ -289,26 +316,22 @@ func (b BDDLifecycle[T, R]) NewI(t testingT, tci int) func(*testing.T) {
 		if hasGivenPhase {
 			next := test
 
-			test = func(t *testing.T) {
+			test = func(t testingT) {
 				t.Helper()
 
 				var arrangeRan bool
 				var given func(*testing.T)
 				if f := b.Arrange; f != nil {
 					arrangeRan = true
-					b.Given, given = f(t, Arrange[T, R]{&tc, &b.hooks, &b.Act, &b.Assert, b.Given, &b.When, &b.Then})
+					b.Given, given = f(getT(t), Arrange[T, R]{&tc, &b.hooks, &b.Describe, &b.Act, &b.Assert, b.Given, &b.When, &b.Then})
 					if given == nil {
-						if f := b.hooks.AfterArrange; f != nil {
-							f(t, AfterArrange[T]{&tc, arrangeRan, true, b.Given == ""})
-						}
+						b.afterArrange(getT(t), &tc, arrangeRan, true, b.Given == "")
 						t.Fatalf(`test setup not run: Arrange returned a nil given function (prefix = "%s")`, prefix)
 						return
 					}
 				}
 
-				if f := b.hooks.AfterArrange; f != nil {
-					f(t, AfterArrange[T]{&tc, arrangeRan, given == nil, b.Given == ""})
-				}
+				b.afterArrange(getT(t), &tc, arrangeRan, given == nil, b.Given == "")
 
 				if b.Given == "" {
 					t.Fatalf(`test setup not run: Arrange function returned an empty Given string (prefix = "%s")`, prefix)
@@ -331,18 +354,24 @@ func (b BDDLifecycle[T, R]) NewI(t testingT, tci int) func(*testing.T) {
 					next(t)
 				})
 			}
+		} else {
+			b.afterArrange(getT(t), &tc, false, true, true)
+
+			if f := b.hooks.AfterGiven; f != nil {
+				f(getT(t), AfterGiven[T]{&tc, &b.Given, &b.When, &b.Then, false})
+			}
 		}
 
 		return test
 	}
 
-	return func(t *testing.T) {
+	return func(t testingT) {
 		t.Helper()
 
 		// `tc := b.TC` is required so the basis test works on a copy of the lifecycle's TC value.
 		// The inner `tc := tc` plus optional CloneTC call let the basis test freely mutate its TC
 		// without affecting:
-		//   - the BDDLifecycle's stored TC, and
+		//   - the Lifecycle's stored TC, and
 		//   - the value passed to Variants,
 		// except for any shared mutable pointer types when CloneTC is nil or shallow.
 		tc := b.TC
@@ -365,7 +394,7 @@ func (b BDDLifecycle[T, R]) NewI(t testingT, tci int) func(*testing.T) {
 		// run test case variations
 
 		i := -1
-		for v := range variants(t, tc) {
+		for v := range variants(getT(t), tc) {
 			i++
 
 			if v.SkipTC {
@@ -389,9 +418,45 @@ func (b BDDLifecycle[T, R]) NewI(t testingT, tci int) func(*testing.T) {
 	}
 }
 
-// New takes a *testing.T, which satisfies testingT, to construct sub-tests for a given BDDLifecycle configuration.
-func (b BDDLifecycle[T, R]) New(t testingT) func(*testing.T) {
+// New takes a *testing.T, which satisfies testingT, to construct sub-tests for a given Lifecycle configuration.
+func (b Lifecycle[T, R]) New(t testingT) func(testingT) {
 	t.Helper()
 
 	return b.NewI(t, -1)
+}
+
+//
+// helpers
+//
+
+func defaultGetT(t testingT) *testing.T {
+	v, _ := t.(*testing.T)
+	if v == nil {
+		panic("not a real *testing.T instance")
+	}
+
+	return v
+}
+
+type nillableT struct {
+	t       *testing.T
+	runHook func(string)
+}
+
+func (t nillableT) Helper() {
+	if t.t != nil {
+		t.t.Helper()
+	}
+}
+
+func (t nillableT) Run(name string, f func(t *testing.T)) bool {
+	if t.t != nil {
+		return t.t.Run(name, f)
+	}
+
+	if f := t.runHook; f != nil {
+		f(name)
+	}
+	f(nil)
+	return true
 }

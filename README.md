@@ -1,5 +1,10 @@
 # tbdd-go
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/josephcopenhaver/tbdd-go)](https://goreportcard.com/report/github.com/josephcopenhaver/tbdd-go)
+![tests](https://github.com/josephcopenhaver/tbdd-go/actions/workflows/tests.yaml/badge.svg)
+![code-coverage](https://img.shields.io/badge/code_coverage-100%25-rgb%2852%2C208%2C88%29)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 tbdd stands for **Test Behavior Dumbly Defined**, using "dumb" in the classical engineering sense:
 simple, direct, and free of unnecessary machinery.
 
@@ -47,3 +52,7 @@ What you write is what `go test` runs.
 tbdd is intended **exclusively** for `*_test.go` files — never for benchmarks or production code.
 
 Elegance comes from restraint, not ceremony.
+
+---
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/josephcopenhaver/tbdd-go.svg)](https://pkg.go.dev/github.com/josephcopenhaver/tbdd-go)
