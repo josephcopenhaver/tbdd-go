@@ -65,9 +65,13 @@ type BDDLifecycle[T any, R any] struct {
 	// before being executed, so they can mutate TC without affecting each other.
 	Variants func(*testing.T, T) iter.Seq[TestVariant[T]]
 
-	// Arrange sets hooks, test case defaults, and initial descriptions then returns a
-	// given string and a function that sets up any context the test case requires. It will
-	// be called shortly after being returned to setup the given context for the test case.
+	// Arrange, when non-nil, sets hooks, test case defaults, and initial descriptions then returns a
+	// "given" description string and a function that sets up any context the test case requires. It will
+	// be called shortly after being returned to set up the "given" context for the test case. The returned
+	// values must be non-empty and non-nil respectively.
+	//
+	// Arrange is also the last opportunity to ensure the Act and Assert are set to non-nil - which is a
+	// requirement of all tests; otherwise a t.Fatal is called.
 	Arrange func(*testing.T, Arrange[T, R]) (string, func(*testing.T))
 
 	// Describe makes sure given (if applicable), when, and then descriptions are set
@@ -89,7 +93,10 @@ type Hooks[T any, R any] struct {
 
 // Arrange contains the mutable configuration of the rest of the test execution plan.
 //
-// Act, Assert, When, Then must be set to non-nil/non-empty values by the time Arrange returns.
+// Arrange is the last opportunity to ensure the Act and Assert are set to non-nil, which is a
+// requirement of all tests; otherwise a t.Fatal is called. They can be set via this
+// configuration along with other details, except the "Given" string, which is handled via
+// the return value of the Arrange call that receives this configuration.
 type Arrange[T any, R any] struct {
 	// TC can be altered by Arrange func if desired.
 	TC *T
@@ -115,11 +122,16 @@ type Arrange[T any, R any] struct {
 // post-arrange hook use.
 type AfterArrange[T any] struct {
 	// TC can be altered by AfterArrange func if desired.
-	TC         *T
+	TC *T
+	// ArrangeRan is true if an Arrange function was configured and executed.
 	ArrangeRan bool
+	// NilGivenFunc is true if Arrange did not run or it did and returned a nil given function.
+	NilGivenFunc bool
+	// EmptyGivenString is true if the effective Given description of a BDD lifecycle is empty.
+	EmptyGivenString bool
 }
 
-// AfterGiven describes the configuration of a test case arrangement for
+// AfterGiven describes the configuration of a test case for
 // post-given hook use.
 type AfterGiven[T any] struct {
 	// TC can be altered by AfterGiven func if desired.
@@ -191,10 +203,20 @@ type TestVariant[T any] struct {
 	SkipCloneTC bool
 }
 
-func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
+// testingT is a simplified version of the functions the *testing.T type implements.
+//
+// In normal use the caller should always be comfortable using a standard non-nil
+// *testing.T value which will always satisfy the interface testingT.
+type testingT interface {
+	Helper()
+}
+
+// NewI takes a *testing.T, which satisfies testingT, and an index in a table driven test to construct
+// sub-tests for a given BDDLifecycle configuration.
+func (b BDDLifecycle[T, R]) NewI(t testingT, tci int) func(*testing.T) {
 	t.Helper()
 
-	f := func(t *testing.T, tc T, prefix string) func(*testing.T) {
+	f := func(t testingT, tc T, prefix string) func(*testing.T) {
 		t.Helper()
 
 		b := b
@@ -236,7 +258,7 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 				t.Error("Assert function of BDD test is not defined")
 			}
 			if b.When == "" || b.Then == "" || b.Act == nil || b.Assert == nil {
-				t.Fatal("when+then not run: BDD test not configured properly")
+				t.Fatalf(`when+then not run: BDD test not configured properly (prefix = "%s")`, prefix)
 				return
 			}
 
@@ -276,17 +298,20 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 					arrangeRan = true
 					b.Given, given = f(t, Arrange[T, R]{&tc, &b.hooks, &b.Act, &b.Assert, b.Given, &b.When, &b.Then})
 					if given == nil {
-						t.Fatal("test setup not run: Arrange returned a nil given function")
+						if f := b.hooks.AfterArrange; f != nil {
+							f(t, AfterArrange[T]{&tc, arrangeRan, true, b.Given == ""})
+						}
+						t.Fatalf(`test setup not run: Arrange returned a nil given function (prefix = "%s")`, prefix)
 						return
 					}
 				}
 
 				if f := b.hooks.AfterArrange; f != nil {
-					f(t, AfterArrange[T]{&tc, arrangeRan})
+					f(t, AfterArrange[T]{&tc, arrangeRan, given == nil, b.Given == ""})
 				}
 
 				if b.Given == "" {
-					t.Fatal("test setup not run: Arrange function returned an empty Given string")
+					t.Fatalf(`test setup not run: Arrange function returned an empty Given string (prefix = "%s")`, prefix)
 					return
 				}
 
@@ -364,7 +389,8 @@ func (b BDDLifecycle[T, R]) NewI(t *testing.T, tci int) func(*testing.T) {
 	}
 }
 
-func (b BDDLifecycle[T, R]) New(t *testing.T) func(*testing.T) {
+// New takes a *testing.T, which satisfies testingT, to construct sub-tests for a given BDDLifecycle configuration.
+func (b BDDLifecycle[T, R]) New(t testingT) func(*testing.T) {
 	t.Helper()
 
 	return b.NewI(t, -1)
