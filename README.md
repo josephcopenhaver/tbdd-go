@@ -142,14 +142,15 @@ func TestHealthCheck(t *testing.T) {
         Err        error
     }
 
-    tc := TestCase{URL: "http://127.0.0.1:8080/healthz"}
+    tc := TestCase{URL: "http://127.0.0.1:8080/health"}
 
     b := tbdd.WT(
         tc,
         // When
-        "a client calls /healthz",
+        "a client calls /health",
         func(t *testing.T, tc TestCase) Result {
-            resp, err := http.Get(tc.URL)
+            c := http.Client{Timeout: 5 * time.Second}
+            resp, err := c.Get(tc.URL)
             if resp != nil {
                 defer resp.Body.Close()
             }
@@ -179,15 +180,20 @@ func TestHealthCheck(t *testing.T) {
 
 ## How it integrates with `go test`
 
-tbdd never runs tests directly. It only builds `func(testingT)` values that you pass to `t.Run` or directly call.
+tbdd never runs tests directly. It only builds `func(*testing.T)` values that you pass to `t.Run` or directly call.
 
 For any `Lifecycle[T,R]` returned by `GWT` / `WT`:
 
 ```go
 b := tbdd.GWT(/* ... */)
 
-// b.New(t) returns func(testingT) that executes the scenario.
+// b.New(t) returns func(*testing.T) that executes the scenario.
 t.Run("scenario name", b.New(t))
+
+// One could even just call it directly if scenario descriptions are not desired:
+//
+// f := b.New(t)
+// f(t)
 ```
 
 You can:
@@ -265,19 +271,19 @@ You can:
 
 ### Variants
 
-`Lifecycle.Variants` lets you fan out from a basis test case into multiple table-driven variants while preserving the same GWT/WT structure:
+`Lifecycle.Variants` lets you fan out from a basis test case into multiple adjacent variants while preserving the same GWT/WT structure:
 
 ```go
 b.Variants = func(t *testing.T, basis TestCase) iter.Seq[tbdd.TestVariant[TestCase]] {
     return func(yield func(tbdd.TestVariant[TestCase]) bool) {
         if !yield(tbdd.TestVariant[TestCase]{
-            Name: "admin user",
+            Kind: "admin user",
             TC:   basisWithRole(basis, "admin"),
         }) {
             return
         }
         _ = yield(tbdd.TestVariant[TestCase]{
-            Name: "suspended user",
+            Kind: "suspended user",
             TC:   basisWithSuspension(basis),
         })
     }
