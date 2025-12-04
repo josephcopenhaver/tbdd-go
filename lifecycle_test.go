@@ -588,3 +588,430 @@ func TestLifecycle_badVariants(t *testing.T) {
 		t.Errorf("expected fatalf call 0 to be int(0) but got %T(%v)", mt.fatalfCalls[0].args[0], mt.fatalfCalls[0].args[0])
 	}
 }
+
+func TestWT(t *testing.T) {
+	type TC struct{}
+	type Result struct{}
+
+	{
+		var whenCalled bool
+		var thenCalled bool
+		b := WT(
+			TC{},
+			"w", func(*testing.T, TC) Result {
+				whenCalled = true
+				return Result{}
+			},
+			"t", func(*testing.T, TC, Result) {
+				thenCalled = true
+			},
+		)
+
+		var _ TestFactory = b
+
+		f := b.New(t)
+		f(t)
+
+		if !whenCalled || !thenCalled {
+			t.Error()
+		}
+	}
+
+	//
+	// validate panics
+	//
+
+	{
+		exp := "tbdd.GWT: when description must be non-empty"
+
+		var panicked bool
+		var whenCalled bool
+		var thenCalled bool
+		var r any
+
+		func() {
+			defer func() {
+				r = recover()
+			}()
+
+			panicked = true
+			WT(
+				TC{},
+				"", func(*testing.T, TC) Result {
+					whenCalled = true
+					return Result{}
+				},
+				"t", func(*testing.T, TC, Result) {
+					thenCalled = true
+				},
+			)
+
+			panicked = false
+		}()
+
+		if !(panicked && !whenCalled && !thenCalled && exp == r) {
+			t.Error()
+		}
+	}
+
+	{
+		exp := "tbdd.GWT: when function must be non-nil"
+
+		var panicked bool
+		var whenCalled bool
+		var thenCalled bool
+		var r any
+
+		func() {
+			defer func() {
+				r = recover()
+			}()
+
+			panicked = true
+			WT(
+				TC{},
+				"w", nil,
+				"t", func(*testing.T, TC, Result) {
+					thenCalled = true
+				},
+			)
+
+			panicked = false
+		}()
+
+		if !(panicked && !whenCalled && !thenCalled && exp == r) {
+			t.Error()
+		}
+	}
+
+	{
+		exp := "tbdd.GWT: then description must be non-empty"
+
+		var panicked bool
+		var whenCalled bool
+		var thenCalled bool
+		var r any
+
+		func() {
+			defer func() {
+				r = recover()
+			}()
+
+			panicked = true
+			WT(
+				TC{},
+				"w", func(*testing.T, TC) Result {
+					whenCalled = true
+					return Result{}
+				},
+				"", func(*testing.T, TC, Result) {
+					thenCalled = true
+				},
+			)
+
+			panicked = false
+		}()
+
+		if !(panicked && !whenCalled && !thenCalled && exp == r) {
+			t.Error()
+		}
+	}
+
+	{
+		exp := "tbdd.GWT: then function must be non-nil"
+
+		var panicked bool
+		var whenCalled bool
+		var thenCalled bool
+		var r any
+
+		func() {
+			defer func() {
+				r = recover()
+			}()
+
+			panicked = true
+			WT(
+				TC{},
+				"w", func(*testing.T, TC) Result {
+					whenCalled = true
+					return Result{}
+				},
+				"t", nil,
+			)
+
+			panicked = false
+		}()
+
+		if !(panicked && !whenCalled && !thenCalled && exp == r) {
+			t.Error()
+		}
+	}
+}
+
+func TestGWT(t *testing.T) {
+	type TC struct{}
+	type Result struct{}
+
+	{
+		var givenCalled bool
+		var whenCalled bool
+		var thenCalled bool
+		b := GWT(
+			TC{},
+			"G", func(*testing.T, *TC) {
+				givenCalled = true
+			},
+			"w", func(*testing.T, TC) Result {
+				whenCalled = true
+				return Result{}
+			},
+			"t", func(*testing.T, TC, Result) {
+				thenCalled = true
+			},
+		)
+
+		var _ TestFactory = b
+
+		f := b.New(t)
+		f(t)
+
+		if !givenCalled || !whenCalled || !thenCalled {
+			t.Error()
+		}
+	}
+
+	//
+	// optional given semantics
+	//
+
+	{
+		var whenCalled bool
+		var thenCalled bool
+
+		b := GWT(
+			TC{},
+			"", nil,
+			"w", func(*testing.T, TC) Result {
+				whenCalled = true
+				return Result{}
+			},
+			"t", func(*testing.T, TC, Result) {
+				thenCalled = true
+			},
+		)
+		f := b.New(t)
+		f(t)
+
+		if !(whenCalled && thenCalled) {
+			t.Error()
+		}
+	}
+
+	{
+		var whenCalled bool
+		var thenCalled bool
+
+		b := GWT(
+			TC{},
+			"g", nil,
+			"w", func(*testing.T, TC) Result {
+				whenCalled = true
+				return Result{}
+			},
+			"t", func(*testing.T, TC, Result) {
+				thenCalled = true
+			},
+		)
+		f := b.New(t)
+		f(t)
+
+		if !(whenCalled && thenCalled) {
+			t.Error()
+		}
+	}
+
+	//
+	// validate panics
+	//
+
+	{
+		exp := "tbdd.GWT: given description must be non-empty when given function is non-nil"
+
+		var panicked bool
+		var givenCalled bool
+		var whenCalled bool
+		var thenCalled bool
+		var r any
+
+		func() {
+			defer func() {
+				r = recover()
+			}()
+
+			panicked = true
+			GWT(
+				TC{},
+				"", func(*testing.T, *TC) {
+					givenCalled = true
+				},
+				"w", func(*testing.T, TC) Result {
+					whenCalled = true
+					return Result{}
+				},
+				"t", func(*testing.T, TC, Result) {
+					thenCalled = true
+				},
+			)
+
+			panicked = false
+		}()
+
+		if !(panicked && !givenCalled && !whenCalled && !thenCalled && exp == r) {
+			t.Error()
+		}
+	}
+
+	{
+		exp := "tbdd.GWT: when description must be non-empty"
+
+		var panicked bool
+		var givenCalled bool
+		var whenCalled bool
+		var thenCalled bool
+		var r any
+
+		func() {
+			defer func() {
+				r = recover()
+			}()
+
+			panicked = true
+			GWT(
+				TC{},
+				"g", func(*testing.T, *TC) {
+					givenCalled = true
+				},
+				"", func(*testing.T, TC) Result {
+					whenCalled = true
+					return Result{}
+				},
+				"t", func(*testing.T, TC, Result) {
+					thenCalled = true
+				},
+			)
+
+			panicked = false
+		}()
+
+		if !(panicked && !givenCalled && !whenCalled && !thenCalled && exp == r) {
+			t.Error()
+		}
+	}
+
+	{
+		exp := "tbdd.GWT: when function must be non-nil"
+
+		var panicked bool
+		var givenCalled bool
+		var whenCalled bool
+		var thenCalled bool
+		var r any
+
+		func() {
+			defer func() {
+				r = recover()
+			}()
+
+			panicked = true
+			GWT(
+				TC{},
+				"g", func(*testing.T, *TC) {
+					givenCalled = true
+				},
+				"w", nil,
+				"t", func(*testing.T, TC, Result) {
+					thenCalled = true
+				},
+			)
+
+			panicked = false
+		}()
+
+		if !(panicked && !givenCalled && !whenCalled && !thenCalled && exp == r) {
+			t.Error()
+		}
+	}
+
+	{
+		exp := "tbdd.GWT: then description must be non-empty"
+
+		var panicked bool
+		var givenCalled bool
+		var whenCalled bool
+		var thenCalled bool
+		var r any
+
+		func() {
+			defer func() {
+				r = recover()
+			}()
+
+			panicked = true
+			GWT(
+				TC{},
+				"g", func(*testing.T, *TC) {
+					givenCalled = true
+				},
+				"w", func(*testing.T, TC) Result {
+					whenCalled = true
+					return Result{}
+				},
+				"", func(*testing.T, TC, Result) {
+					thenCalled = true
+				},
+			)
+
+			panicked = false
+		}()
+
+		if !(panicked && !givenCalled && !whenCalled && !thenCalled && exp == r) {
+			t.Error()
+		}
+	}
+
+	{
+		exp := "tbdd.GWT: then function must be non-nil"
+
+		var panicked bool
+		var givenCalled bool
+		var whenCalled bool
+		var thenCalled bool
+		var r any
+
+		func() {
+			defer func() {
+				r = recover()
+			}()
+
+			panicked = true
+			GWT(
+				TC{},
+				"g", func(*testing.T, *TC) {
+					givenCalled = true
+				},
+				"w", func(*testing.T, TC) Result {
+					whenCalled = true
+					return Result{}
+				},
+				"t", nil,
+			)
+
+			panicked = false
+		}()
+
+		if !(panicked && !givenCalled && !whenCalled && !thenCalled && exp == r) {
+			t.Error()
+		}
+	}
+}

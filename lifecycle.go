@@ -226,7 +226,7 @@ func (b Lifecycle[T, R]) afterArrange(t *testing.T, tc *T, arrangeRan, nilGivenF
 
 // NewI takes a *testing.T, which satisfies testingT, and an index in a table driven test to construct
 // sub-tests for a given Lifecycle configuration.
-func (b Lifecycle[T, R]) NewI(t testingT, tci int) func(testingT) {
+func (b Lifecycle[T, R]) NewI(t testingT, tableTestIndex int) func(testingT) {
 	t.Helper()
 
 	// getT converts a testingT to *testing.T
@@ -247,8 +247,8 @@ func (b Lifecycle[T, R]) NewI(t testingT, tci int) func(testingT) {
 
 		b := b
 
-		if tci >= 0 {
-			s := strconv.Itoa(tci)
+		if tableTestIndex >= 0 {
+			s := strconv.Itoa(tableTestIndex)
 			if prefix == "" {
 				prefix = s
 			} else {
@@ -423,6 +423,106 @@ func (b Lifecycle[T, R]) New(t testingT) func(testingT) {
 	t.Helper()
 
 	return b.NewI(t, -1)
+}
+
+// TestFactory is an interface that all Lifecycle instances implement regardless of the generics used.
+//
+// Use this interface if you wish to store multiple instances in some struct or slice and erase their specific types.
+type TestFactory interface {
+	New(t testingT) func(testingT)
+	NewI(t testingT, tableTestIndex int) func(testingT)
+}
+
+// GWT constructs a Lifecycle using the classic BDD shape
+// “Given / When / Then” for a single test case tc.
+//
+//   - given is a human-readable description of the initial context.
+//   - givenF is called during the Arrange/Given phase and may mutate tc
+//     through the *T pointer to install any scenario-specific state.
+//   - when is a human-readable description of the action under test.
+//   - whenF is used as the Act function; it receives the (possibly mutated)
+//     test case value and returns the result R.
+//   - then is a human-readable description of the expected outcome.
+//   - thenF is used as the Assert function; it receives the final test case
+//     and result to perform assertions.
+//
+// The returned Lifecycle does not execute anything by itself; callers are
+// expected to call New or NewI and execute the returned functions usually
+// as part of table driven tests.
+//
+// GWT treats givenF as optional but panics if given is empty and givenF is
+// not nil.
+// GWT panics if when or then are empty, or if whenF or thenF are nil.
+// This is treated as a programmer error in the test harness configuration.
+//
+// The arguments given and givenF can be empty and nil respectively and the
+// resulting lifecycle will not produce any given context indicator in test
+// descriptions. Should this be attractive try out the sugar function WT.
+func GWT[T, R any](
+	tc T,
+	given string, givenF func(*testing.T, *T),
+	when string, whenF func(*testing.T, T) R,
+	then string, thenF func(*testing.T, T, R),
+) Lifecycle[T, R] {
+
+	var arrange func(*testing.T, Arrange[T, R]) (string, func(*testing.T))
+	if givenF != nil {
+		if given == "" {
+			panic("tbdd.GWT: given description must be non-empty when given function is non-nil")
+		}
+
+		arrange = func(_ *testing.T, cfg Arrange[T, R]) (string, func(*testing.T)) {
+			tc := cfg.TC
+			return given, func(t *testing.T) {
+				givenF(t, tc)
+			}
+		}
+	}
+
+	if when == "" {
+		panic("tbdd.GWT: when description must be non-empty")
+	}
+
+	if whenF == nil {
+		panic("tbdd.GWT: when function must be non-nil")
+	}
+
+	if then == "" {
+		panic("tbdd.GWT: then description must be non-empty")
+	}
+
+	if thenF == nil {
+		panic("tbdd.GWT: then function must be non-nil")
+	}
+
+	return Lifecycle[T, R]{
+		TC:      tc,
+		Given:   given,
+		Arrange: arrange,
+		When:    when,
+		Act:     whenF,
+		Then:    then,
+		Assert: func(t *testing.T, cfg Assert[T, R]) {
+			thenF(t, cfg.TC, cfg.Result)
+		},
+	}
+}
+
+// WT is a convenience wrapper around GWT for use when
+// there is no given context to convey.
+//
+// See GWT for more detail.
+func WT[T, R any](
+	tc T,
+	when string, whenF func(*testing.T, T) R,
+	then string, thenF func(*testing.T, T, R),
+) Lifecycle[T, R] {
+	return GWT(
+		tc,
+		"", nil,
+		when, whenF,
+		then, thenF,
+	)
 }
 
 //
