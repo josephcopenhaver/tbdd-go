@@ -25,10 +25,32 @@ import (
 	"testing"
 )
 
-// lifecycle has a docstring on the exported alias Lifecycle
+// Lifecycle describes an execution process with a specific order to it.
 //
-// see Lifecycle
-type lifecycle[T, R any] struct {
+// New and NewI return test functions that implement this process.
+//
+// The order:
+//
+// - Arrange
+//
+// - AfterArrange (hook)
+//
+// - Given
+//
+// - AfterGiven (hook)
+//
+// - Describe
+//
+// - Act
+//
+// - AfterAct (hook)
+//
+// - Assert
+//
+// - AfterAssert (hook)
+//
+// - Variants
+type Lifecycle[T, R any] struct {
 	Given, When, Then string
 	hooks             Hooks[T, R]
 	TC                T
@@ -63,6 +85,21 @@ type lifecycle[T, R any] struct {
 
 	getT    func(testingT) *testing.T
 	runHook func(string)
+}
+
+// NewI takes a *testing.T and an index in a table driven test to construct
+// sub-tests for a given Lifecycle configuration.
+func (b Lifecycle[T, R]) NewI(t *testing.T, tableTestIndex int) func(testingT) {
+	t.Helper()
+
+	return (lifecycle[T, R])(b).newI(t, tableTestIndex)
+}
+
+// New takes a *testing.T to construct sub-tests for a given Lifecycle configuration.
+func (b Lifecycle[T, R]) New(t *testing.T) func(testingT) {
+	t.Helper()
+
+	return (lifecycle[T, R])(b).new(t)
 }
 
 type Hooks[T, R any] struct {
@@ -195,6 +232,8 @@ type testingT interface {
 	Fatalf(format string, args ...any)
 	Error(args ...any)
 }
+
+type lifecycle[T, R any] Lifecycle[T, R]
 
 func (b lifecycle[T, R]) afterArrange(t *testing.T, tc *T, arrangeRan, nilGivenFunc, emptyGivenString bool) {
 	if f := b.hooks.AfterArrange; f != nil {
@@ -398,48 +437,6 @@ func (b lifecycle[T, R]) new(t testingT) func(testingT) {
 	t.Helper()
 
 	return b.newI(t, -1)
-}
-
-// Lifecycle describes an execution process with a specific order to it.
-//
-// New and NewI return test functions that implement this process.
-//
-// The order:
-//
-// - Arrange
-//
-// - AfterArrange (hook)
-//
-// - Given
-//
-// - AfterGiven (hook)
-//
-// - Describe
-//
-// - Act
-//
-// - AfterAct (hook)
-//
-// - Assert
-//
-// - AfterAssert (hook)
-//
-// - Variants
-type Lifecycle[T, R any] lifecycle[T, R]
-
-// NewI takes a *testing.T and an index in a table driven test to construct
-// sub-tests for a given Lifecycle configuration.
-func (b Lifecycle[T, R]) NewI(t *testing.T, tableTestIndex int) func(testingT) {
-	t.Helper()
-
-	return (lifecycle[T, R])(b).newI(t, tableTestIndex)
-}
-
-// New takes a *testing.T to construct sub-tests for a given Lifecycle configuration.
-func (b Lifecycle[T, R]) New(t *testing.T) func(testingT) {
-	t.Helper()
-
-	return (lifecycle[T, R])(b).new(t)
 }
 
 // GWT constructs a Lifecycle using the classic BDD shape
