@@ -50,7 +50,7 @@ import (
 // - AfterAssert (hook)
 //
 // - Variants
-type Lifecycle[T any, R any] struct {
+type lifecycle[T any, R any] struct {
 	Given, When, Then string
 	hooks             Hooks[T, R]
 	TC                T
@@ -218,15 +218,13 @@ type testingT interface {
 	Error(args ...any)
 }
 
-func (b Lifecycle[T, R]) afterArrange(t *testing.T, tc *T, arrangeRan, nilGivenFunc, emptyGivenString bool) {
+func (b lifecycle[T, R]) afterArrange(t *testing.T, tc *T, arrangeRan, nilGivenFunc, emptyGivenString bool) {
 	if f := b.hooks.AfterArrange; f != nil {
 		f(t, AfterArrange[T]{tc, arrangeRan, nilGivenFunc, emptyGivenString})
 	}
 }
 
-// NewI takes a *testing.T, which satisfies testingT, and an index in a table driven test to construct
-// sub-tests for a given Lifecycle configuration.
-func (b Lifecycle[T, R]) NewI(t testingT, tableTestIndex int) func(testingT) {
+func (b lifecycle[T, R]) newI(t testingT, tableTestIndex int) func(testingT) {
 	t.Helper()
 
 	// getT converts a testingT to *testing.T
@@ -418,11 +416,27 @@ func (b Lifecycle[T, R]) NewI(t testingT, tableTestIndex int) func(testingT) {
 	}
 }
 
-// New takes a *testing.T, which satisfies testingT, to construct sub-tests for a given Lifecycle configuration.
-func (b Lifecycle[T, R]) New(t testingT) func(testingT) {
+func (b lifecycle[T, R]) new(t testingT) func(testingT) {
 	t.Helper()
 
-	return b.NewI(t, -1)
+	return b.newI(t, -1)
+}
+
+type Lifecycle[T, r any] lifecycle[T, r]
+
+// NewI takes a *testing.T, which satisfies testingT, and an index in a table driven test to construct
+// sub-tests for a given Lifecycle configuration.
+func (b Lifecycle[T, R]) NewI(t *testing.T, tableTestIndex int) func(testingT) {
+	t.Helper()
+
+	return (lifecycle[T, R])(b).newI(t, tableTestIndex)
+}
+
+// New takes a *testing.T, which satisfies testingT, to construct sub-tests for a given Lifecycle configuration.
+func (b Lifecycle[T, R]) New(t *testing.T) func(testingT) {
+	t.Helper()
+
+	return (lifecycle[T, R])(b).newI(t, -1)
 }
 
 // TestFactory is an interface that all Lifecycle instances implement regardless of the generics used.
