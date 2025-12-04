@@ -25,32 +25,10 @@ import (
 	"testing"
 )
 
-// BDDLifecycle describes an execution process with a specific order to it.
+// lifecycle has a docstring on the exported alias Lifecycle
 //
-// New and NewI return test functions that implement this process.
-//
-// The order:
-//
-// - Arrange
-//
-// - AfterArrange (hook)
-//
-// - Given
-//
-// - AfterGiven (hook)
-//
-// - Describe
-//
-// - Act
-//
-// - AfterAct (hook)
-//
-// - Assert
-//
-// - AfterAssert (hook)
-//
-// - Variants
-type Lifecycle[T any, R any] struct {
+// see Lifecycle
+type lifecycle[T, R any] struct {
 	Given, When, Then string
 	hooks             Hooks[T, R]
 	TC                T
@@ -87,7 +65,7 @@ type Lifecycle[T any, R any] struct {
 	runHook func(string)
 }
 
-type Hooks[T any, R any] struct {
+type Hooks[T, R any] struct {
 	AfterArrange func(*testing.T, AfterArrange[T])
 	AfterGiven   func(*testing.T, AfterGiven[T])
 	AfterAct     func(*testing.T, AfterAct[T, R])
@@ -100,7 +78,7 @@ type Hooks[T any, R any] struct {
 // requirement of all tests; otherwise a t.Fatal is called. They can be set via this
 // configuration along with other details, except the "Given" string, which is handled via
 // the return value of the Arrange call that receives this configuration.
-type Arrange[T any, R any] struct {
+type Arrange[T, R any] struct {
 	// TC can be altered by Arrange func if desired.
 	TC *T
 	// Hooks can be altered by Arrange func if desired.
@@ -174,7 +152,7 @@ type DescribeResponse struct {
 
 // AfterAct describes the configuration of a test case and its result for
 // post-action hook use.
-type AfterAct[T any, R any] struct {
+type AfterAct[T, R any] struct {
 	// TC can be altered by AfterAct func if desired.
 	TC *T
 	// Result can be altered by AfterAct func if desired.
@@ -182,7 +160,7 @@ type AfterAct[T any, R any] struct {
 }
 
 // Assert describes the configuration of a test case and its result for analysis.
-type Assert[T any, R any] struct {
+type Assert[T, R any] struct {
 	// TC and its internals are intended to be immutable during Assert phase.
 	TC T
 	// R and its internals are intended to be immutable during Assert phase.
@@ -191,7 +169,7 @@ type Assert[T any, R any] struct {
 
 // AfterAssert describes the configuration of a test case and its result for
 // post-assert hook use.
-type AfterAssert[T any, R any] struct {
+type AfterAssert[T, R any] struct {
 	// TC can be altered by AfterAssert func if desired.
 	TC *T
 	// Result can be altered by AfterAssert func if desired.
@@ -218,15 +196,13 @@ type testingT interface {
 	Error(args ...any)
 }
 
-func (b Lifecycle[T, R]) afterArrange(t *testing.T, tc *T, arrangeRan, nilGivenFunc, emptyGivenString bool) {
+func (b lifecycle[T, R]) afterArrange(t *testing.T, tc *T, arrangeRan, nilGivenFunc, emptyGivenString bool) {
 	if f := b.hooks.AfterArrange; f != nil {
 		f(t, AfterArrange[T]{tc, arrangeRan, nilGivenFunc, emptyGivenString})
 	}
 }
 
-// NewI takes a *testing.T, which satisfies testingT, and an index in a table driven test to construct
-// sub-tests for a given Lifecycle configuration.
-func (b Lifecycle[T, R]) NewI(t testingT, tableTestIndex int) func(testingT) {
+func (b lifecycle[T, R]) newI(t testingT, tableTestIndex int) func(testingT) {
 	t.Helper()
 
 	// getT converts a testingT to *testing.T
@@ -418,19 +394,52 @@ func (b Lifecycle[T, R]) NewI(t testingT, tableTestIndex int) func(testingT) {
 	}
 }
 
-// New takes a *testing.T, which satisfies testingT, to construct sub-tests for a given Lifecycle configuration.
-func (b Lifecycle[T, R]) New(t testingT) func(testingT) {
+func (b lifecycle[T, R]) new(t testingT) func(testingT) {
 	t.Helper()
 
-	return b.NewI(t, -1)
+	return b.newI(t, -1)
 }
 
-// TestFactory is an interface that all Lifecycle instances implement regardless of the generics used.
+// Lifecycle describes an execution process with a specific order to it.
 //
-// Use this interface if you wish to store multiple instances in some struct or slice and erase their specific types.
-type TestFactory interface {
-	New(t testingT) func(testingT)
-	NewI(t testingT, tableTestIndex int) func(testingT)
+// New and NewI return test functions that implement this process.
+//
+// The order:
+//
+// - Arrange
+//
+// - AfterArrange (hook)
+//
+// - Given
+//
+// - AfterGiven (hook)
+//
+// - Describe
+//
+// - Act
+//
+// - AfterAct (hook)
+//
+// - Assert
+//
+// - AfterAssert (hook)
+//
+// - Variants
+type Lifecycle[T, R any] lifecycle[T, R]
+
+// NewI takes a *testing.T and an index in a table driven test to construct
+// sub-tests for a given Lifecycle configuration.
+func (b Lifecycle[T, R]) NewI(t *testing.T, tableTestIndex int) func(testingT) {
+	t.Helper()
+
+	return (lifecycle[T, R])(b).newI(t, tableTestIndex)
+}
+
+// New takes a *testing.T to construct sub-tests for a given Lifecycle configuration.
+func (b Lifecycle[T, R]) New(t *testing.T) func(testingT) {
+	t.Helper()
+
+	return (lifecycle[T, R])(b).new(t)
 }
 
 // GWT constructs a Lifecycle using the classic BDD shape

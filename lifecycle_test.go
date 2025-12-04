@@ -152,9 +152,9 @@ func runTC(t *testing.T, tc tc) tcr {
 
 	var f func(testingT)
 	if tc.tciPlusOne == 0 {
-		f = tc.b.New(mt)
+		f = ((lifecycle[mTC, mTCR])(tc.b)).new(mt)
 	} else if tc.tciPlusOne > 0 {
-		f = tc.b.NewI(mt, tc.tciPlusOne-1)
+		f = ((lifecycle[mTC, mTCR])(tc.b)).newI(mt, tc.tciPlusOne-1)
 	} else {
 		t.Fatal("invalid test config: tciPlusOne must not be negative")
 	}
@@ -569,7 +569,7 @@ func TestLifecycle_badVariants(t *testing.T) {
 		}
 	}
 
-	f := b.New(mt)
+	f := ((lifecycle[mTC, mTCR])(b)).new(mt)
 	f(mt)
 
 	if len(mt.fatalfCalls) != 1 {
@@ -606,8 +606,6 @@ func TestWT(t *testing.T) {
 				thenCalled = true
 			},
 		)
-
-		var _ TestFactory = b
 
 		f := b.New(t)
 		f(t)
@@ -770,8 +768,6 @@ func TestGWT(t *testing.T) {
 				thenCalled = true
 			},
 		)
-
-		var _ TestFactory = b
 
 		f := b.New(t)
 		f(t)
