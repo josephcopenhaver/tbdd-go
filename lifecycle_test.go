@@ -537,8 +537,12 @@ func TestLifecycle(t *testing.T) {
 	for i, tc := range tcs {
 		tc.CloneTC = cloneTC
 		tc.Variants = tcVariants
-		f := tc.NewI(t, i)
-		f(t)
+		if i%2 == 0 {
+			f := tc.NewI(t, i)
+			f(t)
+		} else {
+			tc.RunI(t, i)
+		}
 	}
 }
 
@@ -612,6 +616,17 @@ func TestWT(t *testing.T) {
 
 		if !whenCalled || !thenCalled {
 			t.Error()
+		}
+
+		{
+			whenCalled = false
+			thenCalled = false
+
+			b.Run(t)
+
+			if !whenCalled || !thenCalled {
+				t.Error()
+			}
 		}
 	}
 

@@ -98,6 +98,15 @@ func (b Lifecycle[T, R]) NewI(t *testing.T, tableTestIndex int) func(*testing.T)
 	}
 }
 
+// RunI takes a *testing.T and an index in a table driven test to construct
+// sub-tests for a given Lifecycle configuration and runs them.
+func (b Lifecycle[T, R]) RunI(t *testing.T, tableTestIndex int) {
+	t.Helper()
+
+	f := (lifecycle[T, R])(b).newI(t, tableTestIndex)
+	f(t)
+}
+
 // New takes a *testing.T to construct sub-tests for a given Lifecycle configuration.
 func (b Lifecycle[T, R]) New(t *testing.T) func(*testing.T) {
 	t.Helper()
@@ -106,6 +115,14 @@ func (b Lifecycle[T, R]) New(t *testing.T) func(*testing.T) {
 	return func(t *testing.T) {
 		f(t)
 	}
+}
+
+// Run takes a *testing.T to construct sub-tests for a given Lifecycle configuration and runs them.
+func (b Lifecycle[T, R]) Run(t *testing.T) {
+	t.Helper()
+
+	f := (lifecycle[T, R])(b).new(t)
+	f(t)
 }
 
 type Hooks[T, R any] struct {
