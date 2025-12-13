@@ -70,17 +70,21 @@ type Lifecycle[T, R any] struct {
 	// be called shortly after being returned to set up the "given" context for the test case. The returned
 	// values must be non-empty and non-nil respectively.
 	//
+	// Should you wish to define an AfterArrange hook, you must set it in the hooks struct during the
+	// Arrange function execution, not after it returns. Setting the AfterArrange hook value within the
+	// function context Arrange **returns** (the given execution context) will have no effect.
+	//
 	// Arrange is also the last opportunity to ensure the Act and Assert are set to non-nil - which is a
 	// requirement of all tests; otherwise a t.Fatal is called.
 	Arrange func(*testing.T, Arrange[T, R]) (string, func(*testing.T))
 
-	// Describe makes sure given (if applicable), when, and then descriptions are set
+	// Describe makes sure when and then descriptions are set.
 	Describe func(*testing.T, Describe[T]) DescribeResponse
 
-	// Act exercises the component under test and stores results
+	// Act exercises the component under test and returns results.
 	Act func(*testing.T, T) R
 
-	// Assert: validate results + side-effects
+	// Assert: validates the Result contents and any other expected outcomes.
 	Assert func(*testing.T, Assert[T, R])
 
 	getT    func(testingT) *testing.T
@@ -137,11 +141,14 @@ type Hooks[T, R any] struct {
 // Arrange is the last opportunity to ensure the Act and Assert are set to non-nil, which is a
 // requirement of all tests; otherwise a t.Fatal is called. They can be set via this
 // configuration along with other details, except the "Given" string, which is handled via
-// the return value of the Arrange call that receives this configuration.
+// the return value of the Arrange call that processes this configuration.
 type Arrange[T, R any] struct {
 	// TC can be altered by Arrange func if desired.
 	TC *T
 	// Hooks can be altered by Arrange func if desired.
+	//
+	// Note that the AfterArrange hook must be set during the Arrange
+	// function execution, not within the returned given context function
 	Hooks    *Hooks[T, R]
 	Describe *func(*testing.T, Describe[T]) DescribeResponse
 	// Act can be altered by the Arrange func if desired.
@@ -211,7 +218,7 @@ type DescribeResponse struct {
 }
 
 // AfterAct describes the configuration of a test case and its result for
-// post-action hook use.
+// post-act hook use.
 type AfterAct[T, R any] struct {
 	// TC can be altered by AfterAct func if desired.
 	TC *T
@@ -245,10 +252,8 @@ type TestVariant[T any] struct {
 	SkipCloneTC bool
 }
 
-// testingT is a simplified version of the functions the *testing.T type implements.
-//
-// In normal use the caller should always be comfortable using a standard non-nil
-// *testing.T value which will always satisfy the interface testingT.
+// testingT is a simplified version of the functions the *testing.T type
+// implements and exists purely to support internal testing mechanisms.
 type testingT interface {
 	Helper()
 	Run(string, func(*testing.T)) bool
@@ -256,6 +261,8 @@ type testingT interface {
 	Error(args ...any)
 }
 
+// lifecycle is an internal type used to manage the lifecycle of a BDD test case
+// without leaking bespoke and rigid testable internal implementation details.
 type lifecycle[T, R any] Lifecycle[T, R]
 
 func (b lifecycle[T, R]) afterArrange(t *testing.T, tc *T, arrangeRan, nilGivenFunc, emptyGivenString bool) {
@@ -538,7 +545,8 @@ func GWT[T, R any](
 }
 
 // WT is a convenience wrapper around GWT for use when
-// there is no given context to convey.
+// there is no given context to convey considering the
+// simplicity of some test case contexts.
 //
 // See GWT for more detail.
 func WT[T, R any](
@@ -567,6 +575,11 @@ func defaultGetT(t testingT) *testing.T {
 	return v
 }
 
+// nillableT is a wrapper around *testing.T that allows
+// for nil *testing.T instances required in internal testing
+// mechanisms.
+//
+// Luckily for our purposes such a limited wrapper/shim is sufficient.
 type nillableT struct {
 	t       *testing.T
 	runHook func(string)

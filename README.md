@@ -114,7 +114,9 @@ func TestLogin(t *testing.T) {
         },
     )
 
-    t.Run("login succeeds", b.New(t))
+    // t.Run("login succeeds", b.New(t))
+    // or
+    b.Run(t)
 }
 ```
 
@@ -125,7 +127,7 @@ func TestLogin(t *testing.T) {
 - `When` (`whenF`) acts on the (possibly mutated) test case and returns a result (`R`).
 - `Then` (`thenF`) asserts using both the test case (`T`) and the result (`R`).
 
-tbdd wires this into nested subtests under the hood, but you only see normal `t.Run` calls.
+tbdd wires this into nested subtests under the hood, but you only see normal `.Run` calls.
 
 ### WT: When / Then only
 
@@ -180,7 +182,7 @@ func TestHealthCheck(t *testing.T) {
 
 ## How it integrates with `go test`
 
-tbdd never runs tests directly. It only builds `func(*testing.T)` values that you pass to `t.Run` or directly call.
+tbdd never runs tests directly. It only builds `func(*testing.T)` values that must be explicitly called.
 
 For any `Lifecycle[T,R]` returned by `GWT` / `WT`:
 
@@ -190,10 +192,9 @@ b := tbdd.GWT(/* ... */)
 // b.New(t) returns func(*testing.T) that executes the scenario.
 t.Run("scenario name", b.New(t))
 
-// One could even just call it directly if scenario descriptions are not desired:
+// One could even just call it directly if "scenario name" or similar group descriptions are not desired:
 //
-// f := b.New(t)
-// f(t)
+// b.Run(t)
 ```
 
 You can:
@@ -259,7 +260,7 @@ type Lifecycle[T any, R any] struct {
 
 The default `GWT` wiring uses:
 
-- `Given` + `Arrange` to mutate `TC` for the scenario.
+- `Given` + `Arrange` to further setup a `TC` for the scenario at runtime rather than config-time.
 - `When` + `Act` as the action under test.
 - `Then` + `Assert` as the verification step.
 
