@@ -122,10 +122,10 @@ func TestLogin(t *testing.T) {
 
 **Mental model:**
 
-- `Given` (`givenF`) mutates the test case (`*T`) to install scenario-specific context
+- `Given` (`givenF`) mutates the test case (`*TC`) to install scenario-specific context
   (DB records, fake services, seeded state, etc.).
 - `When` (`whenF`) acts on the (possibly mutated) test case and returns a result (`R`).
-- `Then` (`thenF`) asserts using both the test case (`T`) and the result (`R`).
+- `Then` (`thenF`) asserts using both the test case (`TC`) and the result (`R`).
 
 tbdd wires this into nested subtests under the hood, but you only see normal `.Run` calls.
 
@@ -184,7 +184,7 @@ func TestHealthCheck(t *testing.T) {
 
 tbdd never runs tests directly. It only builds `func(*testing.T)` values that must be explicitly called.
 
-For any `Lifecycle[T,R]` returned by `GWT` / `WT`:
+For any `Lifecycle[TC,R]` returned by `GWT` / `WT`:
 
 ```go
 b := tbdd.GWT(/* ... */)
@@ -217,8 +217,8 @@ You can absolutely write all of this with plain table-driven tests and nested `t
   - Non-empty `Given` / `When` / `Then` descriptions.
   - Non-nil `When` / `Then` functions.
 - **Making context explicit**
-  - `Given` mutates `*T` — the test case **is** your scenario + environment.
-  - `When` and `Then` explicitly consume `T` (and `R`), not hidden globals.
+  - `Given` mutates `*TC` — the test case **is** your scenario + environment.
+  - `When` and `Then` explicitly consume `TC` (and `R`), not hidden globals.
 - **Providing a stable pattern**
   - Every scenario has the same shape.
   - It’s easy to scan a file and read behaviors as sentences:
@@ -236,23 +236,23 @@ The rest of this document is for users who want to build richer harnesses on top
 
 ### Lifecycle
 
-Under the hood, `GWT` and `WT` return a `Lifecycle[T,R]`:
+Under the hood, `GWT` and `WT` return a `Lifecycle[TC,R]`:
 
 ```go
-type Lifecycle[T any, R any] struct {
+type Lifecycle[TC any, R any] struct {
     Given string
     When  string
     Then  string
 
-    TC      T
-    CloneTC func(T) T
+    TC      TC
+    CloneTC func(TC) TC
 
-    Arrange  func(*testing.T, Arrange[T, R]) (string, func(*testing.T))
-    Describe func(*testing.T, Describe[T]) DescribeResponse
-    Act      func(*testing.T, T) R
-    Assert   func(*testing.T, Assert[T, R])
+    Arrange  func(*testing.T, Arrange[TC, R]) (string, func(*testing.T))
+    Describe func(*testing.T, Describe[TC]) DescribeResponse
+    Act      func(*testing.T, TC) R
+    Assert   func(*testing.T, Assert[TC, R])
 
-    Variants func(*testing.T, T) iter.Seq[TestVariant[T]]
+    Variants func(*testing.T, TC) iter.Seq[TestVariant[TC]]
 
     // plus internal wiring / hooks
 }
