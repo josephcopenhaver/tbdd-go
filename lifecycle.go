@@ -50,20 +50,20 @@ import (
 // - AfterAssert (hook)
 //
 // - Variants
-type Lifecycle[T, R any] struct {
+type Lifecycle[TC, R any] struct {
 	Given, When, Then string
-	hooks             Hooks[T, R]
-	TC                T
+	hooks             Hooks[TC, R]
+	TC                TC
 
 	// CloneTC optionally specifies how to clone the Test Case type rather than using interface detection magic
 	// which can be prone to receiver based semantic matching issues.
-	CloneTC func(T) T
+	CloneTC func(TC) TC
 
 	// Variants allows for the construction of more test cases from a basis test case.
-	// The T passed in is a copy of Lifecycle.TC taken before the basis test runs.
+	// The TC passed in is a copy of Lifecycle.TC taken before the basis test runs.
 	// The resulting TestVariant.TC values will each be cloned with CloneTC (if non-nil)
 	// before being executed, so they can mutate TC without affecting each other.
-	Variants func(*testing.T, T) iter.Seq[TestVariant[T]]
+	Variants func(*testing.T, TC) iter.Seq[TestVariant[TC]]
 
 	// Arrange, when non-nil, sets hooks, test case defaults, and initial descriptions then returns a
 	// "given" description string and a function that sets up any context the test case requires. It will
@@ -76,16 +76,16 @@ type Lifecycle[T, R any] struct {
 	//
 	// Arrange is also the last opportunity to ensure the Act and Assert are set to non-nil - which is a
 	// requirement of all tests; otherwise a t.Fatal is called.
-	Arrange func(*testing.T, Arrange[T, R]) (string, func(*testing.T))
+	Arrange func(*testing.T, Arrange[TC, R]) (string, func(*testing.T))
 
 	// Describe makes sure when and then descriptions are set.
-	Describe func(*testing.T, Describe[T]) DescribeResponse
+	Describe func(*testing.T, Describe[TC]) DescribeResponse
 
 	// Act exercises the component under test and returns results.
-	Act func(*testing.T, T) R
+	Act func(*testing.T, TC) R
 
 	// Assert: validates the Result contents and any other expected outcomes.
-	Assert func(*testing.T, Assert[T, R])
+	Assert func(*testing.T, Assert[TC, R])
 
 	getT    func(testingT) *testing.T
 	runHook func(string)
@@ -93,10 +93,10 @@ type Lifecycle[T, R any] struct {
 
 // NewI takes a *testing.T and an index in a table driven test to construct
 // sub-tests for a given Lifecycle configuration.
-func (b Lifecycle[T, R]) NewI(t *testing.T, tableTestIndex int) func(*testing.T) {
+func (b Lifecycle[TC, R]) NewI(t *testing.T, tableTestIndex int) func(*testing.T) {
 	t.Helper()
 
-	f := (lifecycle[T, R])(b).newI(t, tableTestIndex)
+	f := (lifecycle[TC, R])(b).newI(t, tableTestIndex)
 	return func(t *testing.T) {
 		f(t)
 	}
@@ -104,36 +104,36 @@ func (b Lifecycle[T, R]) NewI(t *testing.T, tableTestIndex int) func(*testing.T)
 
 // RunI takes a *testing.T and an index in a table driven test to construct
 // sub-tests for a given Lifecycle configuration and runs them.
-func (b Lifecycle[T, R]) RunI(t *testing.T, tableTestIndex int) {
+func (b Lifecycle[TC, R]) RunI(t *testing.T, tableTestIndex int) {
 	t.Helper()
 
-	f := (lifecycle[T, R])(b).newI(t, tableTestIndex)
+	f := (lifecycle[TC, R])(b).newI(t, tableTestIndex)
 	f(t)
 }
 
 // New takes a *testing.T to construct sub-tests for a given Lifecycle configuration.
-func (b Lifecycle[T, R]) New(t *testing.T) func(*testing.T) {
+func (b Lifecycle[TC, R]) New(t *testing.T) func(*testing.T) {
 	t.Helper()
 
-	f := (lifecycle[T, R])(b).new(t)
+	f := (lifecycle[TC, R])(b).new(t)
 	return func(t *testing.T) {
 		f(t)
 	}
 }
 
 // Run takes a *testing.T to construct sub-tests for a given Lifecycle configuration and runs them.
-func (b Lifecycle[T, R]) Run(t *testing.T) {
+func (b Lifecycle[TC, R]) Run(t *testing.T) {
 	t.Helper()
 
-	f := (lifecycle[T, R])(b).new(t)
+	f := (lifecycle[TC, R])(b).new(t)
 	f(t)
 }
 
-type Hooks[T, R any] struct {
-	AfterArrange func(*testing.T, AfterArrange[T])
-	AfterGiven   func(*testing.T, AfterGiven[T])
-	AfterAct     func(*testing.T, AfterAct[T, R])
-	AfterAssert  func(*testing.T, AfterAssert[T, R])
+type Hooks[TC, R any] struct {
+	AfterArrange func(*testing.T, AfterArrange[TC])
+	AfterGiven   func(*testing.T, AfterGiven[TC])
+	AfterAct     func(*testing.T, AfterAct[TC, R])
+	AfterAssert  func(*testing.T, AfterAssert[TC, R])
 }
 
 // Arrange contains the mutable configuration of the rest of the test execution plan.
@@ -142,21 +142,21 @@ type Hooks[T, R any] struct {
 // requirement of all tests; otherwise a t.Fatal is called. They can be set via this
 // configuration along with other details, except the "Given" string, which is handled via
 // the return value of the Arrange call that processes this configuration.
-type Arrange[T, R any] struct {
+type Arrange[TC, R any] struct {
 	// TC can be altered by Arrange func if desired.
-	TC *T
+	TC *TC
 	// Hooks can be altered by Arrange func if desired.
 	//
 	// Note that the AfterArrange hook must be set during the Arrange
 	// function execution, not within the returned given context function
-	Hooks    *Hooks[T, R]
-	Describe *func(*testing.T, Describe[T]) DescribeResponse
+	Hooks    *Hooks[TC, R]
+	Describe *func(*testing.T, Describe[TC]) DescribeResponse
 	// Act can be altered by the Arrange func if desired.
 	// This is a pointer to the lifecycle's Act function so Arrange can replace it.
-	Act *(func(*testing.T, T) R)
+	Act *(func(*testing.T, TC) R)
 	// Assert can be altered by the Arrange func if desired.
 	// This is a pointer to the lifecycle's Assert function so Arrange can replace it.
-	Assert *(func(*testing.T, Assert[T, R]))
+	Assert *(func(*testing.T, Assert[TC, R]))
 	// Given is provided for seeding the first return argument context if desired.
 	Given string
 	// When can be altered by Arrange func if desired.
@@ -169,9 +169,9 @@ type Arrange[T, R any] struct {
 
 // AfterArrange describes the configuration of a test case arrangement for
 // post-arrange hook use.
-type AfterArrange[T any] struct {
+type AfterArrange[TC any] struct {
 	// TC can be altered by AfterArrange func if desired.
-	TC *T
+	TC *TC
 	// ArrangeRan is true if an Arrange function was configured and executed.
 	ArrangeRan bool
 	// NilGivenFunc is true if Arrange did not run or it did and returned a nil given function.
@@ -182,9 +182,9 @@ type AfterArrange[T any] struct {
 
 // AfterGiven describes the configuration of a test case for
 // post-given hook use.
-type AfterGiven[T any] struct {
+type AfterGiven[TC any] struct {
 	// TC can be altered by AfterGiven func if desired.
-	TC *T
+	TC *TC
 	// Given can be altered by AfterGiven func if desired.
 	Given *string
 	// When can be altered by AfterGiven func if desired.
@@ -197,9 +197,9 @@ type AfterGiven[T any] struct {
 // Describe contains the configuration of a test case and its Given, When, and then context
 // strings. This configuration is used to finalize the values of When and Then in a Describe
 // call.
-type Describe[T any] struct {
+type Describe[TC any] struct {
 	// TC and its internals are intended to be immutable during Describe phase.
-	TC T
+	TC TC
 	// Given is intended to be immutable during Describe phase.
 	Given string
 	// When is the initial value of when which can be referenced and loaded into the returned DescribeResponse struct as desired.
@@ -219,33 +219,33 @@ type DescribeResponse struct {
 
 // AfterAct describes the configuration of a test case and its result for
 // post-act hook use.
-type AfterAct[T, R any] struct {
+type AfterAct[TC, R any] struct {
 	// TC can be altered by AfterAct func if desired.
-	TC *T
+	TC *TC
 	// Result can be altered by AfterAct func if desired.
 	Result *R
 }
 
 // Assert describes the configuration of a test case and its result for analysis.
-type Assert[T, R any] struct {
+type Assert[TC, R any] struct {
 	// TC and its internals are intended to be immutable during Assert phase.
-	TC T
+	TC TC
 	// R and its internals are intended to be immutable during Assert phase.
 	Result R
 }
 
 // AfterAssert describes the configuration of a test case and its result for
 // post-assert hook use.
-type AfterAssert[T, R any] struct {
+type AfterAssert[TC, R any] struct {
 	// TC can be altered by AfterAssert func if desired.
-	TC *T
+	TC *TC
 	// Result can be altered by AfterAssert func if desired.
 	Result *R
 }
 
 // TestVariant describes a new test case created from some basis case.
-type TestVariant[T any] struct {
-	TC T
+type TestVariant[TC any] struct {
+	TC TC
 	// Kind must be non-empty when returned by a Variants function
 	Kind        string
 	SkipTC      bool
@@ -263,15 +263,15 @@ type testingT interface {
 
 // lifecycle is an internal type used to manage the lifecycle of a BDD test case
 // without leaking bespoke and rigid testable internal implementation details.
-type lifecycle[T, R any] Lifecycle[T, R]
+type lifecycle[TC, R any] Lifecycle[TC, R]
 
-func (b lifecycle[T, R]) afterArrange(t *testing.T, tc *T, arrangeRan, nilGivenFunc, emptyGivenString bool) {
+func (b lifecycle[TC, R]) afterArrange(t *testing.T, tc *TC, arrangeRan, nilGivenFunc, emptyGivenString bool) {
 	if f := b.hooks.AfterArrange; f != nil {
-		f(t, AfterArrange[T]{tc, arrangeRan, nilGivenFunc, emptyGivenString})
+		f(t, AfterArrange[TC]{tc, arrangeRan, nilGivenFunc, emptyGivenString})
 	}
 }
 
-func (b lifecycle[T, R]) newI(t testingT, tableTestIndex int) func(testingT) {
+func (b lifecycle[TC, R]) newI(t testingT, tableTestIndex int) func(testingT) {
 	t.Helper()
 
 	// getT converts a testingT to *testing.T
@@ -287,7 +287,7 @@ func (b lifecycle[T, R]) newI(t testingT, tableTestIndex int) func(testingT) {
 	// It is used to track run calls.
 	runHook := b.runHook
 
-	f := func(t testingT, tc T, prefix string) func(testingT) {
+	f := func(t testingT, tc TC, prefix string) func(testingT) {
 		t.Helper()
 
 		b := b
@@ -310,7 +310,7 @@ func (b lifecycle[T, R]) newI(t testingT, tableTestIndex int) func(testingT) {
 			t.Helper()
 
 			if f := b.Describe; f != nil {
-				r := f(getT(t), Describe[T]{tc, b.Given, b.When, b.Then})
+				r := f(getT(t), Describe[TC]{tc, b.Given, b.When, b.Then})
 
 				b.When = r.When
 				b.Then = r.Then
@@ -344,15 +344,15 @@ func (b lifecycle[T, R]) newI(t testingT, tableTestIndex int) func(testingT) {
 
 				result := b.Act(t, tc)
 				if f := b.hooks.AfterAct; f != nil {
-					f(t, AfterAct[T, R]{&tc, &result})
+					f(t, AfterAct[TC, R]{&tc, &result})
 				}
 
 				nt.Run("then "+b.Then, func(t *testing.T) {
 					nillableT{t, nil}.Helper()
 
-					b.Assert(t, Assert[T, R]{tc, result})
+					b.Assert(t, Assert[TC, R]{tc, result})
 					if f := b.hooks.AfterAssert; f != nil {
-						f(t, AfterAssert[T, R]{&tc, &result})
+						f(t, AfterAssert[TC, R]{&tc, &result})
 					}
 				})
 			})
@@ -368,7 +368,7 @@ func (b lifecycle[T, R]) newI(t testingT, tableTestIndex int) func(testingT) {
 				var given func(*testing.T)
 				if f := b.Arrange; f != nil {
 					arrangeRan = true
-					b.Given, given = f(getT(t), Arrange[T, R]{&tc, &b.hooks, &b.Describe, &b.Act, &b.Assert, b.Given, &b.When, &b.Then})
+					b.Given, given = f(getT(t), Arrange[TC, R]{&tc, &b.hooks, &b.Describe, &b.Act, &b.Assert, b.Given, &b.When, &b.Then})
 					if given == nil {
 						b.afterArrange(getT(t), &tc, arrangeRan, true, b.Given == "")
 						t.Fatalf(`test setup not run: Arrange returned a nil given function (prefix = "%s")`, prefix)
@@ -393,7 +393,7 @@ func (b lifecycle[T, R]) newI(t testingT, tableTestIndex int) func(testingT) {
 					}
 
 					if f := b.hooks.AfterGiven; f != nil {
-						f(t, AfterGiven[T]{&tc, &b.Given, &b.When, &b.Then, givenRan})
+						f(t, AfterGiven[TC]{&tc, &b.Given, &b.When, &b.Then, givenRan})
 					}
 
 					next(t)
@@ -403,7 +403,7 @@ func (b lifecycle[T, R]) newI(t testingT, tableTestIndex int) func(testingT) {
 			b.afterArrange(getT(t), &tc, false, true, true)
 
 			if f := b.hooks.AfterGiven; f != nil {
-				f(getT(t), AfterGiven[T]{&tc, &b.Given, &b.When, &b.Then, false})
+				f(getT(t), AfterGiven[TC]{&tc, &b.Given, &b.When, &b.Then, false})
 			}
 		}
 
@@ -463,7 +463,7 @@ func (b lifecycle[T, R]) newI(t testingT, tableTestIndex int) func(testingT) {
 	}
 }
 
-func (b lifecycle[T, R]) new(t testingT) func(testingT) {
+func (b lifecycle[TC, R]) new(t testingT) func(testingT) {
 	t.Helper()
 
 	return b.newI(t, -1)
@@ -494,20 +494,20 @@ func (b lifecycle[T, R]) new(t testingT) func(testingT) {
 // The arguments given and givenF can be empty and nil respectively and the
 // resulting lifecycle will not produce any given context indicator in test
 // descriptions. Should this be attractive try out the sugar function WT.
-func GWT[T, R any](
-	tc T,
-	given string, givenF func(*testing.T, *T),
-	when string, whenF func(*testing.T, T) R,
-	then string, thenF func(*testing.T, T, R),
-) Lifecycle[T, R] {
+func GWT[TC, R any](
+	tc TC,
+	given string, givenF func(*testing.T, *TC),
+	when string, whenF func(*testing.T, TC) R,
+	then string, thenF func(*testing.T, TC, R),
+) Lifecycle[TC, R] {
 
-	var arrange func(*testing.T, Arrange[T, R]) (string, func(*testing.T))
+	var arrange func(*testing.T, Arrange[TC, R]) (string, func(*testing.T))
 	if givenF != nil {
 		if given == "" {
 			panic("tbdd.GWT: given description must be non-empty when given function is non-nil")
 		}
 
-		arrange = func(_ *testing.T, cfg Arrange[T, R]) (string, func(*testing.T)) {
+		arrange = func(_ *testing.T, cfg Arrange[TC, R]) (string, func(*testing.T)) {
 			tc := cfg.TC
 			return given, func(t *testing.T) {
 				givenF(t, tc)
@@ -531,14 +531,14 @@ func GWT[T, R any](
 		panic("tbdd.GWT: then function must be non-nil")
 	}
 
-	return Lifecycle[T, R]{
+	return Lifecycle[TC, R]{
 		TC:      tc,
 		Given:   given,
 		Arrange: arrange,
 		When:    when,
 		Act:     whenF,
 		Then:    then,
-		Assert: func(t *testing.T, cfg Assert[T, R]) {
+		Assert: func(t *testing.T, cfg Assert[TC, R]) {
 			thenF(t, cfg.TC, cfg.Result)
 		},
 	}
@@ -549,11 +549,11 @@ func GWT[T, R any](
 // simplicity of some test case contexts.
 //
 // See GWT for more detail.
-func WT[T, R any](
-	tc T,
-	when string, whenF func(*testing.T, T) R,
-	then string, thenF func(*testing.T, T, R),
-) Lifecycle[T, R] {
+func WT[TC, R any](
+	tc TC,
+	when string, whenF func(*testing.T, TC) R,
+	then string, thenF func(*testing.T, TC, R),
+) Lifecycle[TC, R] {
 	return GWT(
 		tc,
 		"", nil,
